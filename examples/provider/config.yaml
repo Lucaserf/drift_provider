@@ -12,10 +12,10 @@ type: Opaque
 data:
   # credentials: BASE64ENCODED_PROVIDER_CREDS
 ---
-apiVersion: template.crossplane.io/v1alpha1
+apiVersion: driftprovider.crossplane.io/v1alpha1
 kind: ProviderConfig
 metadata:
-  name: example
+  name: ctrldrift-provider-config
 spec:
   credentials:
     source: Secret

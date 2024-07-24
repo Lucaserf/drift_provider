@@ -1,0 +1,27 @@
+apiVersion: pkg.crossplane.io/v1alpha1
+kind: ControllerConfig
+metadata:
+  name: debug-config
+spec:
+  args:
+    - --debug
+---
+apiVersion: pkg.crossplane.io/v1 #pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: provider-driftprovider
+  namespace: crossplane-system
+  annotations:
+    meta.crossplane.io/maintainer: Crossplane Maintainers <info@crossplane.io>
+    meta.crossplane.io/source: github.com/crossplane/provider-template
+    meta.crossplane.io/license: Apache-2.0
+    meta.crossplane.io/description: |
+      A template that can be used to create Crossplane providers.
+spec:
+  ignoreCrossplaneConstraints: true
+  package: docker.io/lucaserf/provider-driftprovider:latest
+  packagePullPolicy: Always
+  revisionActivationPolicy: Automatic
+  revisionHistoryLimit: 0
+  controllerConfigRef:
+    name: debug-config

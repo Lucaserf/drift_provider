@@ -1,0 +1,10 @@
+apiVersion: sample.driftprovider.crossplane.io/v1alpha1
+kind: CtrlDrift
+metadata:
+  name: ctrldrift-1
+spec:
+  forProvider:
+    deploy_name: regression-test-1
+    deploy_namespace: default
+  providerConfigRef:
+    name: ctrldrift-provider-config
