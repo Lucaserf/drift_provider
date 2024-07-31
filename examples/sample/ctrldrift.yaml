@@ -1,4 +1,4 @@
-apiVersion: sample.driftprovider.crossplane.io/v1alpha1
+apiVersion: mlops.driftprovider.crossplane.io/v1alpha1
 kind: CtrlDrift
 metadata:
   name: ctrldrift-1
@@ -6,5 +6,6 @@ spec:
   forProvider:
     deploy_name: regression-test-1
     deploy_namespace: default
+    training_script: training_script_regression.py
   providerConfigRef:
     name: ctrldrift-provider-config

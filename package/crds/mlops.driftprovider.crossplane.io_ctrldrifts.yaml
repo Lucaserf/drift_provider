@@ -74,10 +74,16 @@ spec:
                 description: CtrlDriftParameters are the configurable fields of a
                   CtrlDrift.
                 properties:
-                  configurableField:
+                  deploy_name:
+                    type: string
+                  deploy_namespace:
+                    type: string
+                  training_script:
                     type: string
                 required:
-                - configurableField
+                - deploy_name
+                - deploy_namespace
+                - training_script
                 type: object
               managementPolicies:
                 default:
@@ -252,8 +258,10 @@ spec:
               atProvider:
                 description: CtrlDriftObservation are the observable fields of a CtrlDrift.
                 properties:
-                  observableField:
+                  drift:
                     type: string
+                required:
+                - drift
                 type: object
               conditions:
                 description: Conditions of the resource.

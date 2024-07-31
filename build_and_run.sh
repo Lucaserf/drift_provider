@@ -14,6 +14,6 @@ var1=${var1##*Loaded image ID: }
 
 echo $var1
 
-docker tag $var1 datavix/provider-driftprovider
-docker push datavix/provider-driftprovider
+docker tag $var1 lucaserf/provider-driftprovider
+docker push lucaserf/provider-driftprovider
 

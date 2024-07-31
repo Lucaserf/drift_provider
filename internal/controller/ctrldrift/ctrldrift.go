@@ -36,6 +36,8 @@ import (
 	"github.com/crossplane/provider-driftprovider/apis/mlops/v1alpha1"
 	apisv1alpha1 "github.com/crossplane/provider-driftprovider/apis/v1alpha1"
 	"github.com/crossplane/provider-driftprovider/internal/features"
+
+	"os"
 )
 
 const (
@@ -123,7 +125,7 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 		return nil, errors.Wrap(err, errNewClient)
 	}
 
-	return &external{service: svc}, nil
+	return &external{service: svc, logger: c.logger}, nil
 }
 
 // An ExternalClient observes, then either creates, updates, or deletes an
@@ -140,8 +142,25 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 	if !ok {
 		return managed.ExternalObservation{}, errors.New(errNotCtrlDrift)
 	}
-
 	c.logger.Debug(fmt.Sprintf("Observing: %+v", cr))
+
+	//connect to kubernetes
+	// clientset, err := c.connect_kube_client()
+
+	folder_path := "/var/data/"
+
+	//get all files in folder
+	files, err := os.ReadDir(folder_path)
+
+	if err != nil {
+		c.logger.Debug("Error in reading directory")
+		c.logger.Debug(err.Error())
+	}
+	c.logger.Debug("Files in directory:")
+	for _, file := range files {
+		c.logger.Debug(file.Name())
+	}
+
 	//data drift detection algorithm
 
 	//collect new data

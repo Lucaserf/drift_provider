@@ -19,16 +19,16 @@ package v1alpha1
 import (
 	"reflect"
 
+	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-
-	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
 )
 
 // CtrlDriftParameters are the configurable fields of a CtrlDrift.
 type CtrlDriftParameters struct {
 	DeployName      string `json:"deploy_name"`
 	DeployNamespace string `json:"deploy_namespace"`
+	TrainingScript  string `json:"training_script"`
 }
 
 // CtrlDriftObservation are the observable fields of a CtrlDrift.

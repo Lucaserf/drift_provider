@@ -61,7 +61,7 @@ if __name__ == "__main__":
     argparser.add_argument(
         "--providername",
         help="provider name",
-        default="provider-driftprovider",
+        default="driftprovider",
         type=str,
     )
     main()
