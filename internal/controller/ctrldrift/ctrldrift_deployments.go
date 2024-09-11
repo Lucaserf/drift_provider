@@ -42,16 +42,12 @@ func get_converting_job() *batchv1.Job {
 									Value: "/var/data/",
 								},
 								{
+									Name:  "MODEL_PATH",
+									Value: "regression_model_tf.keras",
+								},
+								{
 									Name:  "OUTPUT_PATH",
-									Value: "regression_model_tf",
-								},
-								{
-									Name:  "DATA_PATH",
-									Value: "data.csv",
-								},
-								{
-									Name:  "LOGGING_LEVEL",
-									Value: "INFO",
+									Value: "regressiong_model_lite",
 								},
 							},
 						},
@@ -104,12 +100,20 @@ func get_training_job() *batchv1.Job {
 									Value: "/var/data/",
 								},
 								{
-									Name:  "MODEL_PATH",
-									Value: "regression_model_tf.keras",
+									Name:  "OUTPUT_PATH",
+									Value: "regression_model_tf",
 								},
 								{
-									Name:  "OUTPUT_PATH",
-									Value: "regressiong_model_lite",
+									Name:  "DATA_PATH",
+									Value: "drift_data.csv",
+								},
+								{
+									Name:  "LOGGING_LEVEL",
+									Value: "INFO",
+								},
+								{
+									Name:  "RENAME",
+									Value: "reference.csv",
 								},
 							},
 						},
@@ -166,7 +170,7 @@ func get_drift_detection_deployment() *appsv1.Deployment {
 								},
 								{
 									Name:  "BROKER_ADDRESS",
-									Value: "as-sensiblecity1.cloudmmwunibo.it",
+									Value: "broker.hivemq.com",
 								},
 								{
 									Name:  "TOPIC_NAME",
@@ -182,7 +186,7 @@ func get_drift_detection_deployment() *appsv1.Deployment {
 								},
 								{
 									Name:  "OUTPUT_NAME",
-									Value: "drift_data.csv",
+									Value: "drift_data",
 								},
 							},
 							VolumeMounts: []corev1.VolumeMount{

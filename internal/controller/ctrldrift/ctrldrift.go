@@ -151,9 +151,11 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 	clientset, err := c.connect_kube_client()
 
 	folder_path := "/var/data/"
+	drift_data := "drift_data.csv"
 	drifting := false
 
 	resource_exists := false
+	resource_uptodate := true
 
 	if err != nil {
 		c.logger.Debug("Error in connecting to kubernetes")
@@ -183,23 +185,23 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 	}
 
 	for _, file := range files {
-		if file.Name() == "data.csv" {
-			c.logger.Debug("data.csv found")
+		if file.Name() == drift_data {
+			c.logger.Debug("drift data file found")
 			drifting = true
 		}
 	}
 	if drifting {
 		//check data drift length as parameter for retraining
-		content, err := os.ReadFile(folder_path + "data.csv")
+		content, err := os.ReadFile(folder_path + drift_data)
 		if err != nil {
-			c.logger.Debug("Error in reading data.csv")
+			c.logger.Debug("Error in reading drifted data")
 			c.logger.Debug(err.Error())
 		}
 		//count /n
 		lines := strings.Split(string(content), "\n")
-		c.logger.Debug(fmt.Sprintf("Number of lines in data.csv: %d", len(lines)))
+		c.logger.Debug(fmt.Sprintf("Number of lines in %s: %d", drift_data, len(lines)))
 
-		if len(lines) > 10000 {
+		if len(lines) > 3000 {
 			//check if the new nodel has been trained on the new data
 
 			c.logger.Debug("Data drift detected, retraining needed")
@@ -210,6 +212,20 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 				c.logger.Debug("Error in listing jobs")
 				c.logger.Debug(err.Error())
 			}
+			//if no jobs are running, start training job
+			if len(jobs.Items) == 0 {
+				c.logger.Debug("Start training job")
+				//create job
+				training_job := get_training_job()
+
+				_, err = clientset.BatchV1().Jobs("default").Create(ctx, training_job, metav1.CreateOptions{})
+				if err != nil {
+					c.logger.Debug("Error in creating training job")
+					c.logger.Debug(err.Error())
+				} else {
+					c.logger.Debug("training job created")
+				}
+			}
 
 			for _, job := range jobs.Items {
 				if job.Name == "training-job" {
@@ -217,18 +233,16 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 					//check if job is completed
 					if job.Status.Succeeded == 1 {
 						c.logger.Debug("Training job completed")
-						//delete job
-						err = clientset.BatchV1().Jobs("default").Delete(ctx, job.Name, metav1.DeleteOptions{})
+						//delete job and pod
+						delete_options := metav1.DeleteOptions{PropagationPolicy: &[]metav1.DeletionPropagation{"Background"}[0]}
+						err = clientset.BatchV1().Jobs("default").Delete(ctx, job.Name, delete_options)
 						if err != nil {
 							c.logger.Debug("Error in deleting job")
 							c.logger.Debug(err.Error())
 						}
-						//rename data.csv to data_old.csv
-						err = os.Rename(folder_path+"data.csv", folder_path+"data_old.csv")
-						if err != nil {
-							c.logger.Debug("Error in renaming data.csv")
-							c.logger.Debug(err.Error())
-						}
+						//reload drift deployment
+						resource_uptodate = false
+
 						//convert model to tflite running convert
 						convert_job := get_converting_job()
 
@@ -274,7 +288,8 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 			if job.Status.Succeeded == 1 {
 				c.logger.Debug("Conversion job completed")
 				//delete job
-				err = clientset.BatchV1().Jobs("default").Delete(ctx, job.Name, metav1.DeleteOptions{})
+				delete_options := metav1.DeleteOptions{PropagationPolicy: &[]metav1.DeletionPropagation{"Background"}[0]}
+				err = clientset.BatchV1().Jobs("default").Delete(ctx, job.Name, delete_options)
 				if err != nil {
 					c.logger.Debug("Error in deleting job")
 					c.logger.Debug(err.Error())
@@ -299,7 +314,7 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 		// Return false when the external resource exists, but it not up to date
 		// with the desired managed resource state. This lets the managed
 		// resource reconciler know that it needs to call Update.
-		ResourceUpToDate: true,
+		ResourceUpToDate: resource_uptodate,
 
 		// Return any details that may be required to connect to the external
 		// resource. These will be stored as the connection secret.
@@ -345,8 +360,33 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 	if !ok {
 		return managed.ExternalUpdate{}, errors.New(errNotCtrlDrift)
 	}
-
 	c.logger.Debug(fmt.Sprintf("Updating: %+v", cr))
+
+	//connect to kubernetes
+	clientset, err := c.connect_kube_client()
+
+	if err != nil {
+		c.logger.Debug("Error in connecting to kubernetes")
+		c.logger.Debug(err.Error())
+	}
+
+	//restart deployment
+
+	err = clientset.AppsV1().Deployments("default").Delete(ctx, "drift-deploy", metav1.DeleteOptions{})
+	if err != nil {
+		c.logger.Debug("Error in deleting drift deployment")
+		c.logger.Debug(err.Error())
+	}
+
+	deployment := get_drift_detection_deployment()
+
+	_, err = clientset.AppsV1().Deployments("default").Create(ctx, deployment, metav1.CreateOptions{})
+	if err != nil {
+		c.logger.Debug("Error in creating drift deployment")
+		c.logger.Debug(err.Error())
+	}
+
+	c.logger.Debug("Deployment restarted")
 
 	return managed.ExternalUpdate{
 		// Optionally return any details that may be required to connect to the
