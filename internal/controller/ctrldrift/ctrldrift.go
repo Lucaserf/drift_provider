@@ -38,6 +38,9 @@ import (
 	"github.com/crossplane/provider-driftprovider/internal/features"
 
 	"os"
+	"strings"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 const (
@@ -145,9 +148,31 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 	c.logger.Debug(fmt.Sprintf("Observing: %+v", cr))
 
 	//connect to kubernetes
-	// clientset, err := c.connect_kube_client()
+	clientset, err := c.connect_kube_client()
 
 	folder_path := "/var/data/"
+	drifting := false
+
+	resource_exists := false
+
+	if err != nil {
+		c.logger.Debug("Error in connecting to kubernetes")
+		c.logger.Debug(err.Error())
+	}
+
+	//check if drifting deployment is running
+	deployments, err := clientset.AppsV1().Deployments("default").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		c.logger.Debug("Error in listing deployments")
+		c.logger.Debug(err.Error())
+	}
+
+	for _, deployment := range deployments.Items {
+		if deployment.Name == "drift-deploy" {
+			c.logger.Debug("Drift detection deployment already running")
+			resource_exists = true
+		}
+	}
 
 	//get all files in folder
 	files, err := os.ReadDir(folder_path)
@@ -156,26 +181,120 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 		c.logger.Debug("Error in reading directory")
 		c.logger.Debug(err.Error())
 	}
-	c.logger.Debug("Files in directory:")
+
 	for _, file := range files {
-		c.logger.Debug(file.Name())
+		if file.Name() == "data.csv" {
+			c.logger.Debug("data.csv found")
+			drifting = true
+		}
+	}
+	if drifting {
+		//check data drift length as parameter for retraining
+		content, err := os.ReadFile(folder_path + "data.csv")
+		if err != nil {
+			c.logger.Debug("Error in reading data.csv")
+			c.logger.Debug(err.Error())
+		}
+		//count /n
+		lines := strings.Split(string(content), "\n")
+		c.logger.Debug(fmt.Sprintf("Number of lines in data.csv: %d", len(lines)))
+
+		if len(lines) > 10000 {
+			//check if the new nodel has been trained on the new data
+
+			c.logger.Debug("Data drift detected, retraining needed")
+
+			//check if training job is running
+			jobs, err := clientset.BatchV1().Jobs("default").List(ctx, metav1.ListOptions{})
+			if err != nil {
+				c.logger.Debug("Error in listing jobs")
+				c.logger.Debug(err.Error())
+			}
+
+			for _, job := range jobs.Items {
+				if job.Name == "training-job" {
+					c.logger.Debug("Training job already running")
+					//check if job is completed
+					if job.Status.Succeeded == 1 {
+						c.logger.Debug("Training job completed")
+						//delete job
+						err = clientset.BatchV1().Jobs("default").Delete(ctx, job.Name, metav1.DeleteOptions{})
+						if err != nil {
+							c.logger.Debug("Error in deleting job")
+							c.logger.Debug(err.Error())
+						}
+						//rename data.csv to data_old.csv
+						err = os.Rename(folder_path+"data.csv", folder_path+"data_old.csv")
+						if err != nil {
+							c.logger.Debug("Error in renaming data.csv")
+							c.logger.Debug(err.Error())
+						}
+						//convert model to tflite running convert
+						convert_job := get_converting_job()
+
+						_, err = clientset.BatchV1().Jobs("default").Create(ctx, convert_job, metav1.CreateOptions{})
+						if err != nil {
+							c.logger.Debug("Error in creating job")
+							c.logger.Debug(err.Error())
+						} else {
+							c.logger.Debug("conversion job created")
+						}
+					} else {
+						c.logger.Debug("Training job still running")
+					}
+				} else {
+					c.logger.Debug("Start training job")
+					//create job
+					training_job := get_training_job()
+
+					_, err = clientset.BatchV1().Jobs("default").Create(ctx, training_job, metav1.CreateOptions{})
+					if err != nil {
+						c.logger.Debug("Error in creating job")
+						c.logger.Debug(err.Error())
+					} else {
+						c.logger.Debug("Job created")
+					}
+
+				}
+			}
+
+		}
 	}
 
-	//data drift detection algorithm
+	//check if conversion job is running
+	jobs, err := clientset.BatchV1().Jobs("default").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		c.logger.Debug("Error in listing jobs")
+		c.logger.Debug(err.Error())
+	}
 
-	//collect new data
+	for _, job := range jobs.Items {
+		if job.Name == "converting-job" {
+			//check if job is completed
+			if job.Status.Succeeded == 1 {
+				c.logger.Debug("Conversion job completed")
+				//delete job
+				err = clientset.BatchV1().Jobs("default").Delete(ctx, job.Name, metav1.DeleteOptions{})
+				if err != nil {
+					c.logger.Debug("Error in deleting job")
+					c.logger.Debug(err.Error())
+				}
+				//change model in deployment
+				//TODO: change model in deployment
+			} else {
+				c.logger.Debug("Conversion job still running")
+			}
 
-	//compare data
+		}
+	}
 
-	//return drift status
-
-	//if drift detected, call retraining and wait for completition
+	c.logger.Debug(fmt.Sprintf("Drifting: %t", drifting))
 
 	return managed.ExternalObservation{
 		// Return false when the external resource does not exist. This lets
 		// the managed resource reconciler know that it needs to call Create to
 		// (re)create the resource, or that it has successfully been deleted.
-		ResourceExists: true,
+		ResourceExists: resource_exists,
 
 		// Return false when the external resource exists, but it not up to date
 		// with the desired managed resource state. This lets the managed
@@ -195,6 +314,24 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 	}
 
 	c.logger.Debug(fmt.Sprintf("Creating: %+v", cr))
+
+	//connect to kubernetes
+	clientset, err := c.connect_kube_client()
+
+	if err != nil {
+		c.logger.Debug("Error in connecting to kubernetes")
+		c.logger.Debug(err.Error())
+	}
+
+	//create deployment
+
+	deployment := get_drift_detection_deployment()
+
+	_, err = clientset.AppsV1().Deployments("default").Create(ctx, deployment, metav1.CreateOptions{})
+	if err != nil {
+		c.logger.Debug("Error in creating drift deployment")
+		c.logger.Debug(err.Error())
+	}
 
 	return managed.ExternalCreation{
 		// Optionally return any details that may be required to connect to the
@@ -225,6 +362,22 @@ func (c *external) Delete(ctx context.Context, mg resource.Managed) error {
 	}
 
 	c.logger.Debug(fmt.Sprintf("Deleting: %+v", cr))
+
+	//connect to kubernetes
+	clientset, err := c.connect_kube_client()
+
+	if err != nil {
+		c.logger.Debug("Error in connecting to kubernetes")
+		c.logger.Debug(err.Error())
+	}
+
+	//delete deployment
+
+	err = clientset.AppsV1().Deployments("default").Delete(ctx, "drift-deploy", metav1.DeleteOptions{})
+	if err != nil {
+		c.logger.Debug("Error in deleting drift deployment")
+		c.logger.Debug(err.Error())
+	}
 
 	return nil
 }
