@@ -213,3 +213,77 @@ func get_drift_detection_deployment() *appsv1.Deployment {
 	}
 	return drift_detection_deployment
 }
+
+func get_tflite_deployment() *appsv1.Deployment {
+	tflite_deployment := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "python-tflite-deploy",
+			Labels: map[string]string{
+				"app": "python-tflite",
+			},
+		},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: int32Ptr(1),
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app": "python-tflite",
+				},
+			},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						"app": "python-tflite",
+					},
+				},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{
+							Name:            "python-tflite",
+							Image:           "lucaserf/python_tflite:latest",
+							ImagePullPolicy: corev1.PullAlways,
+							Env: []corev1.EnvVar{
+								{
+									Name:  "MODEL_NAME",
+									Value: "model_regression.tflite",
+								},
+								{
+									Name:  "MODEL_PATH",
+									Value: "/var/data/",
+								},
+								{
+									Name:  "BATCH_SIZE",
+									Value: "10",
+								},
+								{
+									Name:  "TOPIC_NAME",
+									Value: "drift-detection",
+								},
+								{
+									Name:  "BROKER_ADDRESS",
+									Value: "broker.hivemq.com",
+								},
+							},
+							VolumeMounts: []corev1.VolumeMount{
+								{
+									Name:      "data-volume",
+									MountPath: "/var/data/",
+								},
+							},
+						},
+					},
+					Volumes: []corev1.Volume{
+						{
+							Name: "data-volume",
+							VolumeSource: corev1.VolumeSource{
+								PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+									ClaimName: "data-pvc",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	return tflite_deployment
+}

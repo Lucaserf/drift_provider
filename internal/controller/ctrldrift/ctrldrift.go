@@ -230,32 +230,6 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 			for _, job := range jobs.Items {
 				if job.Name == "training-job" {
 					c.logger.Debug("Training job already running")
-					//check if job is completed
-					if job.Status.Succeeded == 1 {
-						c.logger.Debug("Training job completed")
-						//delete job and pod
-						delete_options := metav1.DeleteOptions{PropagationPolicy: &[]metav1.DeletionPropagation{"Background"}[0]}
-						err = clientset.BatchV1().Jobs("default").Delete(ctx, job.Name, delete_options)
-						if err != nil {
-							c.logger.Debug("Error in deleting job")
-							c.logger.Debug(err.Error())
-						}
-						//reload drift deployment
-						resource_uptodate = false
-
-						//convert model to tflite running convert
-						convert_job := get_converting_job()
-
-						_, err = clientset.BatchV1().Jobs("default").Create(ctx, convert_job, metav1.CreateOptions{})
-						if err != nil {
-							c.logger.Debug("Error in creating job")
-							c.logger.Debug(err.Error())
-						} else {
-							c.logger.Debug("conversion job created")
-						}
-					} else {
-						c.logger.Debug("Training job still running")
-					}
 				} else {
 					c.logger.Debug("Start training job")
 					//create job
@@ -268,6 +242,8 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 					} else {
 						c.logger.Debug("Job created")
 					}
+
+					//delete resource
 
 				}
 			}
@@ -300,6 +276,34 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 				c.logger.Debug("Conversion job still running")
 			}
 
+		}
+		//check if job is completed
+		if job.Name == "training-job" {
+			if job.Status.Succeeded == 1 {
+				c.logger.Debug("Training job completed")
+				//delete job and pod
+				delete_options := metav1.DeleteOptions{PropagationPolicy: &[]metav1.DeletionPropagation{"Background"}[0]}
+				err = clientset.BatchV1().Jobs("default").Delete(ctx, job.Name, delete_options)
+				if err != nil {
+					c.logger.Debug("Error in deleting job")
+					c.logger.Debug(err.Error())
+				}
+				//reload drift deployment
+				resource_uptodate = false
+
+				//convert model to tflite running convert
+				convert_job := get_converting_job()
+
+				_, err = clientset.BatchV1().Jobs("default").Create(ctx, convert_job, metav1.CreateOptions{})
+				if err != nil {
+					c.logger.Debug("Error in creating job")
+					c.logger.Debug(err.Error())
+				} else {
+					c.logger.Debug("conversion job created")
+				}
+			} else {
+				c.logger.Debug("Training job still running")
+			}
 		}
 	}
 
@@ -338,13 +342,23 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 		c.logger.Debug(err.Error())
 	}
 
-	//create deployment
+	//create drift deployment
 
 	deployment := get_drift_detection_deployment()
 
 	_, err = clientset.AppsV1().Deployments("default").Create(ctx, deployment, metav1.CreateOptions{})
 	if err != nil {
 		c.logger.Debug("Error in creating drift deployment")
+		c.logger.Debug(err.Error())
+	}
+
+	//create inference deployment
+
+	deployment = get_tflite_deployment()
+
+	_, err = clientset.AppsV1().Deployments("default").Create(ctx, deployment, metav1.CreateOptions{})
+	if err != nil {
+		c.logger.Debug("Error in creating tflite deployment")
 		c.logger.Debug(err.Error())
 	}
 
@@ -370,7 +384,7 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 		c.logger.Debug(err.Error())
 	}
 
-	//restart deployment
+	//restart deployment drift detection
 
 	err = clientset.AppsV1().Deployments("default").Delete(ctx, "drift-deploy", metav1.DeleteOptions{})
 	if err != nil {
@@ -386,7 +400,27 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 		c.logger.Debug(err.Error())
 	}
 
-	c.logger.Debug("Deployment restarted")
+	c.logger.Debug("Deployment drift restarted")
+
+	//restart deployment inference
+
+	err = clientset.AppsV1().Deployments("default").Delete(ctx, "python-tflite-deploy", metav1.DeleteOptions{})
+
+	if err != nil {
+		c.logger.Debug("Error in deleting tflite deployment")
+		c.logger.Debug(err.Error())
+	}
+
+	deployment = get_tflite_deployment()
+
+	_, err = clientset.AppsV1().Deployments("default").Create(ctx, deployment, metav1.CreateOptions{})
+
+	if err != nil {
+		c.logger.Debug("Error in creating tflite deployment")
+		c.logger.Debug(err.Error())
+	}
+
+	c.logger.Debug("Deployment tflite restarted")
 
 	return managed.ExternalUpdate{
 		// Optionally return any details that may be required to connect to the
@@ -411,11 +445,19 @@ func (c *external) Delete(ctx context.Context, mg resource.Managed) error {
 		c.logger.Debug(err.Error())
 	}
 
-	//delete deployment
+	//delete deployment drift detection
 
 	err = clientset.AppsV1().Deployments("default").Delete(ctx, "drift-deploy", metav1.DeleteOptions{})
 	if err != nil {
 		c.logger.Debug("Error in deleting drift deployment")
+		c.logger.Debug(err.Error())
+	}
+
+	//delete deployment inference
+
+	err = clientset.AppsV1().Deployments("default").Delete(ctx, "python-tflite-deploy", metav1.DeleteOptions{})
+	if err != nil {
+		c.logger.Debug("Error in deleting tflite deployment")
 		c.logger.Debug(err.Error())
 	}
 
