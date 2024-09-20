@@ -47,7 +47,7 @@ func get_converting_job() *batchv1.Job {
 								},
 								{
 									Name:  "OUTPUT_PATH",
-									Value: "regressiong_model_lite",
+									Value: "model_regression",
 								},
 							},
 						},
@@ -170,7 +170,7 @@ func get_drift_detection_deployment() *appsv1.Deployment {
 								},
 								{
 									Name:  "BROKER_ADDRESS",
-									Value: "broker.hivemq.com",
+									Value: "lserf-tinyml.cloudmmwunibo.it",
 								},
 								{
 									Name:  "TOPIC_NAME",
@@ -247,7 +247,7 @@ func get_tflite_deployment() *appsv1.Deployment {
 									Value: "model_regression.tflite",
 								},
 								{
-									Name:  "MODEL_PATH",
+									Name:  "DATA_FOLDER",
 									Value: "/var/data/",
 								},
 								{
@@ -260,7 +260,7 @@ func get_tflite_deployment() *appsv1.Deployment {
 								},
 								{
 									Name:  "BROKER_ADDRESS",
-									Value: "broker.hivemq.com",
+									Value: "lserf-tinyml.cloudmmwunibo.it",
 								},
 							},
 							VolumeMounts: []corev1.VolumeMount{

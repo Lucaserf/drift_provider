@@ -271,7 +271,9 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 					c.logger.Debug(err.Error())
 				}
 				//change model in deployment
-				//TODO: change model in deployment
+
+				//reload drift and inference deployment
+				resource_uptodate = false
 			} else {
 				c.logger.Debug("Conversion job still running")
 			}
@@ -281,6 +283,7 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 		if job.Name == "training-job" {
 			if job.Status.Succeeded == 1 {
 				c.logger.Debug("Training job completed")
+
 				//delete job and pod
 				delete_options := metav1.DeleteOptions{PropagationPolicy: &[]metav1.DeletionPropagation{"Background"}[0]}
 				err = clientset.BatchV1().Jobs("default").Delete(ctx, job.Name, delete_options)
@@ -288,8 +291,6 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 					c.logger.Debug("Error in deleting job")
 					c.logger.Debug(err.Error())
 				}
-				//reload drift deployment
-				resource_uptodate = false
 
 				//convert model to tflite running convert
 				convert_job := get_converting_job()
